@@ -3,7 +3,6 @@
  * Licensed under the CC-BY license http://creativecommons.org/licenses/by/3.0/au/
  * Author Andrew Waugh
  */
-
 package VEOCheck;
 
 /**
@@ -16,18 +15,18 @@ package VEOCheck;
  * Andrew Waugh (andrew.waugh@prov.vic.gov.au) Copyright 2005, 2015, 2018 PROV
  *
  * 20101027 Changed default to be alltests = true to prevent the default from
- * not testing anything (confusing for users)
- * 20150511 Added testing for viruses
- * 20150518 Imported into NetBeans. Altered to support virus checking
- * 20150602 Added the ability to specify a directory of VEOs
- * 20180105 Added headless mode for new DA
- * 20180314 Added ability to specify a file that contains the DTD
- * 20180411 Altered virus checking to look for the process rather than the service
- * 20180601 Now uses VERSCommon instead of VEOSupport
+ * not testing anything (confusing for users) 20150511 Added testing for viruses
+ * 20150518 Imported into NetBeans. Altered to support virus checking 20150602
+ * Added the ability to specify a directory of VEOs 20180105 Added headless mode
+ * for new DA 20180314 Added ability to specify a file that contains the DTD
+ * 20180411 Altered virus checking to look for the process rather than the
+ * service 20180601 Now uses VERSCommon instead of VEOSupport 20180604
+ * Restructured so that DTD would be looked for in a standard place
  *
  *************************************************************
  */
 import VERSCommon.VEOError;
+import VERSCommon.VEOFatal;
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
@@ -115,9 +114,12 @@ public class VEOCheck {
     private final static Logger LOG = Logger.getLogger("VEOCheck.VEOCheck");
 
     /**
-     * Constructor for testing outermost (first layer) of VEO.
+     * Constructor for testing as a stand-alone program
+     *
+     * @param args command line arguments
+     * @throws VERSCommon.VEOFatal if processing cannot continue
      */
-    public VEOCheck() {
+    public VEOCheck(String args[]) throws VEOFatal {
         // default logging
         LOG.getParent().setLevel(Level.WARNING);
         LOG.setLevel(null);
@@ -142,6 +144,33 @@ public class VEOCheck {
         files = new ArrayList<>();
         outputFile = null;
         tempDir = Paths.get(".");
+
+        // process command line args
+        parseCommandArgs(args);
+
+        // open output file
+        if (outputFile == null) {
+            out = new OutputStreamWriter(System.out);
+        } else {
+            try {
+                out = new FileWriter(outputFile.toFile());
+            } catch (IOException ioe) {
+                throw new VEOFatal("Failed opening output file (" + outputFile.toFile() + "): " + ioe.getMessage());
+            }
+        }
+
+        // set up environment
+        parse = new ParseVEO(verbose, strict, dtd, da, oneLayer, out);
+        valueTester = new TestValues(verbose, strict, da, oneLayer, out);
+        virusTester = new TestViruses(verbose, strict, da, oneLayer, out);
+        signatureTester = new TestSignatures(verbose, false, strict, da, oneLayer, out);
+
+        // print header
+        try {
+            printHeader();
+        } catch (IOException e) {
+            throw new VEOFatal("Failed writing header: " + e.getMessage());
+        }
     }
 
     /**
@@ -189,7 +218,7 @@ public class VEOCheck {
         out = new StringWriter();
 
         // set up standard tests...
-        parse = new ParseVEO(verbose, da, strict, oneLayer, out);
+        parse = new ParseVEO(verbose, strict, this.dtd, da, oneLayer, out);
         valueTester = new TestValues(verbose, strict, da, oneLayer, out);
         virusTester = new TestViruses(verbose, strict, da, oneLayer, out);
         signatureTester = new TestSignatures(verbose, debug, strict, da, oneLayer, out);
@@ -248,9 +277,8 @@ public class VEOCheck {
      * @param args
      * @return
      */
-    public String parseCommandArgs(String args[]) {
+    private void parseCommandArgs(String args[]) throws VEOFatal {
         int i;
-        String result = new String();
         String usage = "VEOCheck [-all] [-strict] [-da] [-extract] [-virus] [-eicar] [-parseVEO] [-useStdDTD] [-dtd <dtdFile>] [-oneLayer] [-signatures] [-values] [-v1.2|-v2] [-virus] [-verbose] [-debug] [-out <file>] [-t <tempDir>] <files>+";
 
         // not in headless mode...
@@ -286,9 +314,7 @@ public class VEOCheck {
                 case "-d": // delay for virus checking
                     i++;
                     if (i == args.length) {
-                        result = result + "Missing integer after '-d'";
-                        result = result + " Usage: " + usage + "\r\n";
-                        break;
+                        throw new VEOFatal("Missing integer after '-d'. Usage: " + usage);
                     }
                     delay = Integer.parseInt(args[i]);
                     break;
@@ -304,20 +330,18 @@ public class VEOCheck {
                     if (dtd == null) {
                         useStdDtd = true;
                     } else {
-                        result = result + "Cannot use '-dtd' and '-usestddtd' together";
+                        throw new VEOFatal("Cannot use '-dtd' and '-usestddtd' together");
                     }
                     break;
                 case "-dtd": // specify output file
                     i++;
                     if (i == args.length) {
-                        result = result + "Missing dtd file after '-dtd'";
-                        result = result + " Usage: " + usage + "\r\n";
-                        break;
+                        throw new VEOFatal("Missing dtd file after '-dtd'. Usage: " + usage);
                     }
                     dtd = Paths.get(args[i]);
                     if (useStdDtd) {
                         useStdDtd = false;
-                        result = result + "Cannot use '-dtd' and '-usestddtd' together";
+                        throw new VEOFatal("Cannot use '-dtd' and '-usestddtd' together");
                     }
                     break;
                 case "-signatures": // test signatures in VEO
@@ -346,59 +370,26 @@ public class VEOCheck {
                 case "-out": // specify output file
                     i++;
                     if (i == args.length) {
-                        result = result + "Missing output file after '-out'";
-                        result = result + " Usage: " + usage + "\r\n";
-                        break;
+                        throw new VEOFatal("Missing output file after '-out'. Usage: " + usage);
                     }
                     outputFile = Paths.get(args[i]);
                     break;
                 case "-t": // specify a directory in which to put the extracted content
                     i++;
                     if (i == args.length) {
-                        result = result + "Missing temporary directory after '-t'";
-                        result = result + " Usage: " + usage + "\r\n";
-                        break;
+                        throw new VEOFatal("Missing temporary directory after '-t'. Usage: " + usage);
                     }
                     tempDir = Paths.get(args[i]);
                     break;
                 default: // anything not starting with a '-' is a VEO
                     if (args[i].charAt(0) == '-') {
-                        result = result + "Unknown argument: '" + args[i] + "'\r\n";
-                        result = result + " Usage: " + usage + "\r\n";
+                        throw new VEOFatal("Unknown argument: '" + args[i] + " Usage: " + usage);
                     } else {
                         files.add(args[i]);
                     }
                     break;
             }
         }
-        return result;
-    }
-
-    /**
-     * Open the output file
-     *
-     * If no output file was specified in the command args, write test results
-     * to std out. Otherwise write the output to the specified file.
-     *
-     * @return
-     */
-    public String openOutputFile() {
-        String result;
-
-        if (headless) {
-            return ("FAILED: operating in headless mode");
-        }
-        result = "";
-        if (outputFile == null) {
-            out = new OutputStreamWriter(System.out);
-        } else {
-            try {
-                out = new FileWriter(outputFile.toFile());
-            } catch (IOException ioe) {
-                result = ioe.toString();
-            }
-        }
-        return result;
     }
 
     /**
@@ -408,13 +399,9 @@ public class VEOCheck {
      *
      * @throws java.io.IOException
      */
-    public void printHeader() throws IOException {
+    private void printHeader() throws IOException {
         SimpleDateFormat sdf;
         TimeZone tz;
-
-        if (headless) {
-            return;
-        }
 
         out.write("******************************************************************************\r\n");
         out.write("*                                                                            *\r\n");
@@ -500,18 +487,10 @@ public class VEOCheck {
     public void testVEOs() throws VEOError, IOException {
         int i;
         String veo;
-        DirectoryStream<Path> ds;
-        Path veoFile;
 
         if (headless) {
             return;
         }
-
-        // set up standard tests...
-        parse = new ParseVEO(verbose, da, strict, oneLayer, out);
-        valueTester = new TestValues(verbose, strict, da, oneLayer, out);
-        virusTester = new TestViruses(verbose, strict, da, oneLayer, out);
-        signatureTester = new TestSignatures(verbose, false, strict, da, oneLayer, out);
 
         // if a temporary directory is specified, open it (create if necessary)
         if (tempDir != null) {
@@ -537,29 +516,7 @@ public class VEOCheck {
             if (veo == null) {
                 continue;
             }
-
-            // if veo is a directory, go through directory and test all the VEOs
-            // otherwise just test the VEO
-            veoFile = Paths.get(veo);
-            if (Files.isDirectory(veoFile)) {
-                try {
-                    ds = Files.newDirectoryStream(veoFile);
-                    for (Path p : ds) {
-                        if (Files.isRegularFile(p) && p.toString().toLowerCase().endsWith(".veo")) {
-                            checkVEO(p.toString());
-                        }
-                    }
-                    ds.close();
-                } catch (IOException e) {
-                    throw new VEOError("Failed to process directory '" + veo + "': " + e.getMessage());
-                }
-            } else {
-                try {
-                    checkVEO(veo);
-                } catch (IOException e) {
-                    throw new VEOError(e.toString());
-                }
-            }
+            processFile(Paths.get(veo));
         }
 
         // check that the virus checking software is STILL running
@@ -567,16 +524,44 @@ public class VEOCheck {
     }
 
     /**
+     * Process directory structure, recursing through subdirectories
+     * @param file file being looked at
+     * @throws VEOError any error
+     */
+    private void processFile(Path file) throws VEOError {
+        DirectoryStream<Path> ds;
+        
+        if (Files.isDirectory(file)) {
+            try {
+                ds = Files.newDirectoryStream(file);
+                for (Path p : ds) {
+                    processFile(p);
+                }
+                ds.close();
+            } catch (IOException e) {
+                throw new VEOError("Failed to process directory '" + file.toString() + "': " + e.getMessage());
+            }
+        } else {
+            try {
+                checkVEO(file);
+            } catch (IOException e) {
+                throw new VEOError(e.toString());
+            }
+        }
+    }
+
+    /**
      * Do the Tests
      *
      * Passed the file that contains the VEO
      */
-    private boolean checkVEO(String filename) throws VEOError, IOException {
+    private boolean checkVEO(Path file) throws VEOError, IOException {
         org.w3c.dom.Element vdom;
         boolean overallResult;
         PullApartVEO pav;
         ArrayList<String> content;
         Path p, p1;
+        String filename;
 
         if (headless) {
             return (false);
@@ -584,8 +569,15 @@ public class VEOCheck {
 
         overallResult = true;
         content = null;
+        filename = file.toAbsolutePath().toString();
 
         out.write("******************************************************************************\r\n");
+        
+        if (!filename.toLowerCase().endsWith(".veo")) {
+            out.write("Ignoring '" + filename + "'\r\n");
+            return false;
+        }
+
         out.write("New test. Testing '" + filename + "'\r\n");
         p = Paths.get(filename);
         if (!Files.exists(p)) {
@@ -654,6 +646,8 @@ public class VEOCheck {
                 throw new VEOError("Failed deleting: " + ioe.getMessage());
             }
         }
+
+        out.flush();
         return overallResult;
     }
 
@@ -912,16 +906,13 @@ public class VEOCheck {
     public static void main(String args[]) {
         VEOCheck vc;
 
-        vc = new VEOCheck();
-        System.err.println(vc.parseCommandArgs(args));
-        vc.openOutputFile();
         try {
-            vc.printHeader();
+            vc = new VEOCheck(args);
             vc.testVEOs();
+            vc.closeOutputFile();
         } catch (IOException | VEOError e) {
             System.err.println(e.toString());
             System.exit(-1);
         }
-        vc.closeOutputFile();
     }
 }

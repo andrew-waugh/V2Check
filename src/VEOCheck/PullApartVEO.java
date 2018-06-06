@@ -3,7 +3,6 @@
  * Licensed under the CC-BY license http://creativecommons.org/licenses/by/3.0/au/
  * Author Andrew Waugh
  */
-
 package VEOCheck;
 
 /**
@@ -25,7 +24,8 @@ package VEOCheck;
  *
  * <ul>
  * <li>20110614 Changed OutputStreamWriter from 8859_1 to UTF-8
- * <li>20150518 Imported into NetBeans IDE and cleaned up. Added eicar.txt generation
+ * <li>20150518 Imported into NetBeans IDE and cleaned up. Added eicar.txt
+ * generation
  * <li>20180601 Now uses VERSCommon instead of VEOSupport
  * </ul>
  *
@@ -37,10 +37,12 @@ import VERSCommon.*;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
@@ -50,9 +52,9 @@ import java.util.Stack;
 import java.util.ArrayList;
 import javax.xml.parsers.*;
 import org.xml.sax.*;
-import org.xml.sax.helpers.*;
+import org.xml.sax.ext.DefaultHandler2;
 
-public class PullApartVEO extends DefaultHandler {
+public class PullApartVEO extends DefaultHandler2 {
 
     SAXParserFactory spf;
     SAXParser sax;          // parser to read the VEO
@@ -79,17 +81,21 @@ public class PullApartVEO extends DefaultHandler {
 
     /**
      * Default constructor
+     *
      * @param veoName the name of the veo being pulled apart
      */
     public PullApartVEO(String veoName) {
         int i;
-        
+
         // set up SAX parser
         try {
             spf = SAXParserFactory.newInstance();
             spf.setValidating(false);
             // spf.setFeature("http://xml.org/sax/features/resolve-dtd-uris", false);
             sax = spf.newSAXParser();
+
+            XMLReader xmlReader = sax.getXMLReader();
+            xmlReader.setProperty("http://xml.org/sax/properties/lexical-handler", this);
         } catch (SAXNotRecognizedException e) {
             System.err.println("SAXNotRecognizedException:" + e.getMessage());
             System.exit(-1);
@@ -107,14 +113,14 @@ public class PullApartVEO extends DefaultHandler {
         // remember the veo name
         if ((i = veoName.lastIndexOf('.')) != -1) {
             if (i == 0) {
-                    this.veoName = "noName";
+                this.veoName = "noName";
             } else {
-                this.veoName = veoName.substring(0,i);
+                this.veoName = veoName.substring(0, i);
             }
         } else {
             this.veoName = veoName;
         }
-        
+
         currentElement = new Stack<String>();
         currentId = new Stack<String>();
         bw = null;
@@ -158,8 +164,10 @@ public class PullApartVEO extends DefaultHandler {
      * @param outVeo the generated VEO without document data
      * @param tempDir a directory in which to put the extracted content
      * @param useStdDtd
-     * @param extract if true extract the document data into files for inspection
-     * @param virusScanning if true the extracted document data will be scanned for viruses
+     * @param extract if true extract the document data into files for
+     * inspection
+     * @param virusScanning if true the extracted document data will be scanned
+     * for viruses
      * @throws VEOError if extraction failed
      * @return lists of names of the extracted document data (empty if extract
      * is false)
@@ -225,6 +233,17 @@ public class PullApartVEO extends DefaultHandler {
             /* ignore */
         }
         return files;
+    }
+
+    /**
+     * This forces the parser to ignore the reference to the external DTD (if
+     * any is present)
+     */
+    private static final ByteArrayInputStream BAIS = new ByteArrayInputStream("".getBytes());
+
+    @Override
+    public InputSource resolveEntity(String name, String publicId, String baseURI, String systemId) throws SAXException {
+        return new InputSource(BAIS);
     }
 
     /**
@@ -447,7 +466,7 @@ public class PullApartVEO extends DefaultHandler {
             // open the file for writing... if the content is base64 encoded
             // decode it, otherwise write out the characters
             try {
-                s = veoName+"-"+((String) currentId.peek());
+                s = veoName + "-" + ((String) currentId.peek());
                 f = Paths.get(tempDir.toAbsolutePath().toString(), s);
                 files.add(s);
                 contentfos = new FileOutputStream(f.toFile());
@@ -463,13 +482,16 @@ public class PullApartVEO extends DefaultHandler {
             } catch (IOException e) {
                 try {
                     contentosw.close();
-                } catch (IOException e1) { /* ignore */ }
+                } catch (IOException e1) {
+                    /* ignore */ }
                 try {
                     contentbos.close();
-                } catch (IOException e1) { /* ignore */ }
+                } catch (IOException e1) {
+                    /* ignore */ }
                 try {
                     contentfos.close();
-                } catch (IOException e1) { /* ignore */ }
+                } catch (IOException e1) {
+                    /* ignore */ }
                 throw new SAXException("IOException: " + e.getMessage());
             }
             outputOpen = true;
@@ -625,17 +647,21 @@ public class PullApartVEO extends DefaultHandler {
             if (!base64) {
                 try {
                     contentosw.close();
-                } catch (IOException e1) { /* ignore */ }
+                } catch (IOException e1) {
+                    /* ignore */ }
             }
             try {
                 contentbos.flush();
-            } catch (IOException e1) { /* ignore */ }
+            } catch (IOException e1) {
+                /* ignore */ }
             try {
                 contentbos.close();
-            } catch (IOException e1) { /* ignore */ }
+            } catch (IOException e1) {
+                /* ignore */ }
             try {
                 contentfos.close();
-            } catch (IOException e1) { /* ignore */ }
+            } catch (IOException e1) {
+                /* ignore */ }
             outputOpen = false;
         }
 

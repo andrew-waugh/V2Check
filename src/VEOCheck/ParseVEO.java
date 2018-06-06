@@ -3,7 +3,6 @@
  * Licensed under the CC-BY license http://creativecommons.org/licenses/by/3.0/au/
  * Author Andrew Waugh
  */
-
 package VEOCheck;
 
 /**
@@ -14,9 +13,9 @@ package VEOCheck;
  * This class tests a VEO for conformance to a DTD. As a side effect, the VEO is
  * parsed into DOM for subsequent tests and we work out the version.
  *
- * 20180314 Added code to read vers.dtd from a standard location
- * 20150518 Imported into NetBeans.
- * 20180314 Altered so that caller can specify a DTD file
+ * 20180314 Added code to read vers.dtd from a standard location 20150518
+ * Imported into NetBeans. 20180314 Altered so that caller can specify a DTD
+ * file
  *
  * Andrew Waugh Copyright 2005 PROV
  *
@@ -36,6 +35,7 @@ import org.xml.sax.*;
 import org.w3c.dom.*;
 
 public class ParseVEO extends TestSupport {
+
     private final static Logger LOG = Logger.getLogger("VEOCheck.ParseVEO");
 
     // internal (DOM) representation of VEO being tested
@@ -52,12 +52,13 @@ public class ParseVEO extends TestSupport {
      *
      * @param verbose true if give more information in the result
      * @param strict true if enforce strict compliance to VERS standard
+     * @param dtd DTD file to use (null if use the one referenced by the VEO)
      * @param da
      * @param oneLayer true if only check outer layer of a modified DA
      * @param out StringBuilder to capture results of test
      */
     public ParseVEO(boolean verbose, boolean strict,
-            boolean da, boolean oneLayer, Writer out) {
+            Path dtd, boolean da, boolean oneLayer, Writer out) {
         super(verbose, strict, da, oneLayer, out);
 
         DocumentBuilderFactory dbf;
@@ -81,6 +82,20 @@ public class ParseVEO extends TestSupport {
 
         // Set error handler...
         db.setErrorHandler(new XMLParserErrorHandler());
+
+        // Force the reading of the DTD from the file specified. This is called
+        // when the parser needs to resolve an external entity. We check that
+        // the external entity is actually 'vers.dtd', and, if so, return a
+        // reader associated with the specified DTD.
+        // According to InputSource manual, standard handling is to close the
+        // inputsource and reader upon completion of parsing
+        db.setEntityResolver((String publicId, String systemId) -> {
+            if (dtd != null && systemId.contains("vers.dtd")) {
+                return new InputSource(new FileReader(dtd.toFile()));
+            } else {
+                return null;
+            }
+        });
 
         version = null;
     }
@@ -113,8 +128,8 @@ public class ParseVEO extends TestSupport {
      * @param useStdDtd if true, use the DTD from the web site
      * @return true if parse suceeded
      *
-     * ajw 20060809 Added information in error message to ensure user thinks about
-     * connecting to the network when using -useStdDtd
+     * ajw 20060809 Added information in error message to ensure user thinks
+     * about connecting to the network when using -useStdDtd
      */
     public boolean performTest(File f, Path dtd, boolean useStdDtd) {
         NodeList nl;
@@ -125,20 +140,6 @@ public class ParseVEO extends TestSupport {
         InputSource is;
 
         printTestHeader("Parsing VEO");
-
-        // Force the reading of the DTD from the file specified. This is called
-        // when the parser needs to resolve an external entity. We check that
-        // the external entity is actually 'vers.dtd', and, if so, return a
-        // reader associated with the specified DTD.
-        // According to InputSource manual, standard handling is to close the
-        // inputsource and reader upon completion of parsing
-        db.setEntityResolver((String publicId, String systemId) -> {
-            if (dtd != null && systemId.contains("vers.dtd")) {
-                return new InputSource(new FileReader(dtd.toFile()));
-            } else {
-                return null;
-            }
-        });
 
         // parse the input file
         bis = null;
