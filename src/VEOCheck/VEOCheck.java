@@ -849,7 +849,7 @@ public class VEOCheck {
      * @param cutVEO cut down VEO with document content removed
      * @param out a StringWriter to capture output
      * @return true if test was successful
-     * @throws VEOSupport.VEOError
+     * @throws VERSCommon.VEOError
      */
     public boolean vpaTestVEO(Path veo, Path cutVEO, StringWriter out) throws VEOError {
         org.w3c.dom.Element vdom;
